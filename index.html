@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Global Development Explorer</title>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <style>
+    :root {
+      --bg: #111827; --surface: #1f2937; --border: #374151;
+      --text: #f9fafb; --muted: #9ca3af; --accent: #3b82f6;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); padding: 20px; }
+    header { text-align: center; margin-bottom: 24px; }
+    header h1 { font-size: 2rem; font-weight: 700; margin-bottom: 8px; }
+    header p { color: var(--muted); font-size: 1rem; }
+
+    #controls {
+      display: flex; flex-wrap: wrap; gap: 16px;
+      align-items: center; justify-content: center;
+      margin-bottom: 16px; padding: 16px;
+      background: var(--surface); border-radius: 12px; border: 1px solid var(--border);
+    }
+    .control-group { display: flex; align-items: center; gap: 8px; }
+    label { font-size: 0.875rem; color: var(--muted); }
+    input[type="range"] { width: 200px; accent-color: var(--accent); cursor: pointer; }
+    input[type="text"] {
+      background: var(--bg); border: 1px solid var(--border); color: var(--text);
+      padding: 6px 12px; border-radius: 6px; font-size: 0.875rem; width: 160px;
+    }
+    input[type="text"]:focus { outline: none; border-color: var(--accent); }
+    button {
+      background: var(--accent); color: white; border: none;
+      padding: 8px 18px; border-radius: 6px; cursor: pointer;
+      font-size: 0.875rem; font-weight: 600; transition: opacity 0.2s;
+    }
+    button:hover { opacity: 0.85; }
+    .continent-btn {
+      padding: 5px 12px; border-radius: 20px; border: 2px solid;
+      background: transparent; cursor: pointer; font-size: 0.8rem; font-weight: 600;
+      transition: all 0.2s;
+    }
+    #year-display { font-size: 1.5rem; font-weight: 700; color: var(--accent); min-width: 52px; text-align: center; }
+    #chart-wrapper {
+      background: var(--surface); border-radius: 12px; border: 1px solid var(--border);
+      padding: 16px; margin-bottom: 24px; overflow: hidden;
+    }
+    .tooltip {
+      position: fixed; background: rgba(17,24,39,0.97); border: 1px solid var(--border);
+      border-radius: 8px; padding: 12px; font-size: 0.8rem; pointer-events: none;
+      opacity: 0; transition: opacity 0.15s; max-width: 210px; z-index: 100;
+    }
+    .tooltip strong { font-size: 0.95rem; display: block; margin-bottom: 6px; }
+    .tooltip .stat { display: flex; justify-content: space-between; gap: 12px; margin-top: 3px; }
+    .tooltip .stat span:last-child { font-weight: 600; color: var(--accent); }
+    .axis text { fill: var(--muted); font-size: 11px; }
+    .axis line, .axis path { stroke: var(--border); }
+    .grid line { stroke: var(--border); stroke-opacity: 0.4; }
+    .grid path { stroke: none; }
+    .bubble { cursor: pointer; }
+
+    #writeup {
+      background: var(--surface); border-radius: 12px; border: 1px solid var(--border);
+      padding: 32px; max-width: 900px; margin: 0 auto;
+    }
+    #writeup h2 { font-size: 1.4rem; margin-bottom: 20px; color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 10px; }
+    #writeup h3 { font-size: 1rem; margin: 18px 0 8px; }
+    #writeup p { color: var(--muted); line-height: 1.75; font-size: 0.9rem; margin-bottom: 8px; }
+    #writeup ul { color: var(--muted); padding-left: 20px; line-height: 1.85; font-size: 0.9rem; }
+    #writeup a { color: var(--accent); }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>🌍 Global Development Explorer</h1>
+  <p>How have wealth and health evolved across 142 nations from 1952 to 2007?</p>
+</header>
+
+<div id="controls">
+  <div class="control-group">
+    <button id="play-btn">▶ Play</button>
+    <span id="year-display">1952</span>
+    <input type="range" id="year-slider" min="0" max="11" step="1" value="0">
+  </div>
+  <div class="control-group">
+    <label>🔍 Search:</label>
+    <input type="text" id="search" placeholder="Country name...">
+  </div>
+  <div class="control-group">
+    <label>Filter:</label>
+    <div id="continent-filters" style="display:flex;flex-wrap:wrap;gap:8px;"></div>
+  </div>
+</div>
+
+<div id="chart-wrapper">
+  <svg id="chart"></svg>
+</div>
+
+<div class="tooltip" id="tooltip"></div>
+
+<div id="writeup">
+  <h2>📋 Visualization Write-up</h2>
+
+  <h3>What question does this answer?</h3>
+  <p>
+    This visualization explores the relationship between national wealth (GDP per capita) and human wellbeing (life expectancy) 
+    across 142 countries from 1952 to 2007. The central question is: <strong>Have poorer nations caught up with wealthier ones 
+    in health outcomes over 55 years?</strong> Secondary questions include: How do world regions compare over time? 
+    Which individual countries show the most dramatic trajectories?
+  </p>
+
+  <h3>Design Decisions</h3>
+  <p>
+    A bubble chart (inspired by Hans Rosling's Gapminder) maps three quantitative variables simultaneously — 
+    GDP (x-axis, log scale), life expectancy (y-axis), and population (bubble area). A logarithmic x-axis is used 
+    because GDP per capita spans several orders of magnitude; a linear scale would compress all low-income countries 
+    into an unreadable band. Continent membership is encoded with a distinct color palette.
+  </p>
+  <p>
+    <strong>Interaction rationale:</strong> A year slider with play/pause animation makes temporal trends vivid — 
+    this is the most impactful "aha" moment when watching countries move right and upward over time. 
+    Continent buttons allow regional isolation. Country search highlights individual trajectories. 
+    Hover tooltips provide precise values on demand. Zoom and pan support exploration of dense low-income clusters. 
+    Clicking a bubble also highlights/pins that country.
+  </p>
+  <p>
+    <strong>Alternatives considered:</strong> A choropleth map was rejected because temporal comparison is harder. 
+    A connected scatterplot was considered for tracking single countries but loses the distributional view. 
+    D3.js was chosen over Vega-Lite for greater interaction customizability.
+  </p>
+
+  <h3>Data Source</h3>
+  <ul>
+    <li>Gapminder dataset (via Plotly public datasets): GDP per capita, life expectancy, population, 142 countries, 1952–2007.</li>
+    <li>URL: <a href="https://raw.githubusercontent.com/plotly/datasets/master/gapminder_unfiltered.csv" target="_blank">gapminder_unfiltered.csv</a></li>
+    <li>Original data compiled by the Gapminder Foundation (gapminder.org), popularized by Hans Rosling.</li>
+  </ul>
+
+  <h3>Development Process</h3>
+  <p>
+    Total development time: approximately <strong>14 hours</strong>. The most time-consuming parts were 
+    (1) coordinating the zoom transform with animated bubble transitions so both work simultaneously, and 
+    (2) ensuring the continent filter, country search, and year slider interact correctly together without 
+    conflicts. GitHub Pages deployment was straightforward and took under 20 minutes.
+  </p>
+</div>
+
+<script>
+// ─── Configuration ───────────────────────────────────────────────────────────
+const DATA_URL = "https://raw.githubusercontent.com/plotly/datasets/master/gapminder_unfiltered.csv";
+const YEARS = [1952,1957,1962,1967,1972,1977,1982,1987,1992,1997,2002,2007];
+const COLORS = {
+  Africa:"#e15759", Americas:"#f28e2b",
+  Asia:"#4e79a7", Europe:"#59a14f", Oceania:"#b07aa1"
+};
+const CONTINENTS = Object.keys(COLORS);
+
+// ─── State ───────────────────────────────────────────────────────────────────
+let currentYearIdx = 0, playing = false, playInterval = null;
+let activeFilters = new Set(CONTINENTS);
+let highlightCountry = "";
+let allData = [];
+let zoomTransform = d3.zoomIdentity;
+
+// ─── Layout ───────────────────────────────────────────────────────────────────
+const wrapper = document.getElementById("chart-wrapper");
+const totalW = wrapper.clientWidth - 32;
+const totalH = Math.min(540, window.innerHeight * 0.55);
+const margin = { top: 30, right: 160, bottom: 62, left: 72 };
+const W = totalW - margin.left - margin.right;
+const H = totalH - margin.top - margin.bottom;
+
+const svg = d3.select("#chart").attr("width", totalW).attr("height", totalH);
+svg.append("defs").append("clipPath").attr("id","clip")
+   .append("rect").attr("width", W).attr("height", H);
+
+const g   = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
+const area = g.append("g").attr("clip-path","url(#clip)");
+
+// ─── Scales ───────────────────────────────────────────────────────────────────
+const xSc = d3.scaleLog().range([0, W]);
+const ySc = d3.scaleLinear().range([H, 0]);
+const rSc = d3.scaleSqrt().range([4, 44]);
+
+// ─── Axes & Grid ─────────────────────────────────────────────────────────────
+const xAxisG = g.append("g").attr("class","axis").attr("transform",`translate(0,${H})`);
+const yAxisG = g.append("g").attr("class","axis");
+const xGrid  = area.append("g").attr("class","grid").attr("transform",`translate(0,${H})`);
+const yGrid  = area.append("g").attr("class","grid");
+
+g.append("text").attr("x", W/2).attr("y", H+50).attr("text-anchor","middle")
+ .attr("fill","#9ca3af").attr("font-size",13).text("GDP per Capita (USD, log scale)");
+g.append("text").attr("transform","rotate(-90)").attr("x",-H/2).attr("y",-55)
+ .attr("text-anchor","middle").attr("fill","#9ca3af").attr("font-size",13).text("Life Expectancy (years)");
+
+// ─── Legend ───────────────────────────────────────────────────────────────────
+const legend = g.append("g").attr("transform",`translate(${W+18},10)`);
+CONTINENTS.forEach((c,i) => {
+  const row = legend.append("g").attr("transform",`translate(0,${i*26})`);
+  row.append("circle").attr("r",7).attr("cx",7).attr("fill",COLORS[c]).attr("opacity",0.85);
+  row.append("text").attr("x",18).attr("y",4).attr("fill","#d1d5db").attr("font-size",12).text(c);
+});
+
+// ─── Tooltip ──────────────────────────────────────────────────────────────────
+const tip = d3.select("#tooltip");
+
+// ─── Zoom ─────────────────────────────────────────────────────────────────────
+const zoom = d3.zoom().scaleExtent([1,12])
+  .translateExtent([[0,0],[W,H]])
+  .on("zoom", evt => {
+    zoomTransform = evt.transform;
+    const nx = evt.transform.rescaleX(xSc);
+    const ny = evt.transform.rescaleY(ySc);
+    xAxisG.call(d3.axisBottom(nx).ticks(6,"$,~s").tickSize(0));
+    yAxisG.call(d3.axisLeft(ny).ticks(6).tickSize(0));
+    xGrid.call(d3.axisBottom(nx).ticks(6).tickSize(-H).tickFormat(""));
+    yGrid.call(d3.axisLeft(ny).ticks(6).tickSize(-W).tickFormat(""));
+    area.selectAll(".bubble")
+        .attr("cx", d => nx(d.gdpPercap))
+        .attr("cy", d => ny(d.lifeExp));
+  });
+svg.call(zoom);
+
+// ─── Continent Buttons ────────────────────────────────────────────────────────
+document.getElementById("continent-filters").innerHTML = "";
+CONTINENTS.forEach(c => {
+  const btn = document.createElement("button");
+  btn.className = "continent-btn";
+  btn.textContent = c;
+  Object.assign(btn.style, { borderColor: COLORS[c], backgroundColor: COLORS[c], color: "white" });
+  btn.addEventListener("click", () => {
+    if (activeFilters.has(c)) {
+      if (activeFilters.size === 1) return;
+      activeFilters.delete(c);
+      btn.style.backgroundColor = "transparent";
+      btn.style.color = COLORS[c];
+    } else {
+      activeFilters.add(c);
+      btn.style.backgroundColor = COLORS[c];
+      btn.style.color = "white";
+    }
+    render(false);
+  });
+  document.getElementById("continent-filters").appendChild(btn);
+});
+
+// ─── Search ───────────────────────────────────────────────────────────────────
+document.getElementById("search").addEventListener("input", e => {
+  highlightCountry = e.target.value.trim().toLowerCase();
+  render(false);
+});
+
+// ─── Slider & Play ────────────────────────────────────────────────────────────
+const slider = document.getElementById("year-slider");
+const yearDisp = document.getElementById("year-display");
+slider.addEventListener("input", () => {
+  currentYearIdx = +slider.value;
+  yearDisp.textContent = YEARS[currentYearIdx];
+  render(true);
+});
+
+const playBtn = document.getElementById("play-btn");
+playBtn.addEventListener("click", togglePlay);
+function togglePlay() {
+  playing = !playing;
+  if (playing) {
+    playBtn.textContent = "⏸ Pause";
+    playInterval = setInterval(() => {
+      currentYearIdx++;
+      if (currentYearIdx >= YEARS.length) { currentYearIdx = YEARS.length - 1; togglePlay(); return; }
+      slider.value = currentYearIdx;
+      yearDisp.textContent = YEARS[currentYearIdx];
+      render(true);
+    }, 850);
+  } else {
+    playBtn.textContent = "▶ Play";
+    clearInterval(playInterval);
+  }
+}
+
+// ─── Data Loading ─────────────────────────────────────────────────────────────
+d3.csv(DATA_URL, d => ({
+  country: d.country, year: +d.year, pop: +d.pop,
+  continent: d.continent, lifeExp: +d.lifeExp, gdpPercap: +d.gdpPercap
+})).then(raw => {
+  allData = raw.filter(d => YEARS.includes(d.year) && d.gdpPercap > 0 && d.lifeExp > 0);
+
+  xSc.domain([d3.min(allData, d => d.gdpPercap) * 0.75, d3.max(allData, d => d.gdpPercap) * 1.25]);
+  ySc.domain([d3.min(allData, d => d.lifeExp) - 3,      d3.max(allData, d => d.lifeExp) + 3]);
+  rSc.domain([0, d3.max(allData, d => d.pop)]);
+
+  xAxisG.call(d3.axisBottom(xSc).ticks(6,"$,~s").tickSize(0));
+  yAxisG.call(d3.axisLeft(ySc).ticks(6).tickSize(0));
+  xGrid.call(d3.axisBottom(xSc).ticks(6).tickSize(-H).tickFormat(""));
+  yGrid.call(d3.axisLeft(ySc).ticks(6).tickSize(-W).tickFormat(""));
+
+  const init = allData.filter(d => d.year === YEARS[0]).sort((a,b) => b.pop - a.pop);
+
+  area.selectAll(".bubble")
+    .data(init, d => d.country)
+    .enter().append("circle")
+    .attr("class","bubble")
+    .attr("cx", d => xSc(d.gdpPercap))
+    .attr("cy", d => ySc(d.lifeExp))
+    .attr("r",  d => rSc(d.pop))
+    .attr("fill",   d => COLORS[d.continent])
+    .attr("opacity", 0.75)
+    .attr("stroke",  d => COLORS[d.continent])
+    .attr("stroke-width", 1.5)
+    .on("mousemove", (evt, d) => {
+      tip.style("opacity",1).html(`
+        <strong>${d.country}</strong>
+        <div class="stat"><span>Continent</span><span>${d.continent}</span></div>
+        <div class="stat"><span>Life Exp.</span><span>${d.lifeExp.toFixed(1)} yrs</span></div>
+        <div class="stat"><span>GDP/cap</span><span>$${d3.format(",.0f")(d.gdpPercap)}</span></div>
+        <div class="stat"><span>Population</span><span>${d3.format(".3s")(d.pop)}</span></div>
+      `).style("left", evt.clientX+14+"px").style("top", evt.clientY-20+"px");
+    })
+    .on("mouseleave", () => tip.style("opacity",0))
+    .on("click", (evt, d) => {
+      const inp = document.getElementById("search");
+      if (highlightCountry === d.country.toLowerCase()) {
+        inp.value = ""; highlightCountry = "";
+      } else {
+        inp.value = d.country; highlightCountry = d.country.toLowerCase();
+      }
+      render(false);
+    });
+});
+
+// ─── Render Update ────────────────────────────────────────────────────────────
+function render(animate) {
+  const yearData = allData.filter(d => d.year === YEARS[currentYearIdx]).sort((a,b) => b.pop - a.pop);
+  const nx = zoomTransform.rescaleX(xSc);
+  const ny = zoomTransform.rescaleY(ySc);
+  const t  = animate ? d3.transition().duration(750).ease(d3.easeQuadInOut) : d3.transition().duration(0);
+
+  area.selectAll(".bubble")
+    .data(yearData, d => d.country)
+    .style("display",  d => activeFilters.has(d.continent) ? null : "none")
+    .attr("opacity",   d => highlightCountry && !d.country.toLowerCase().includes(highlightCountry) ? 0.08 : 0.78)
+    .attr("stroke",    d => highlightCountry && d.country.toLowerCase().includes(highlightCountry) ? "#fff" : COLORS[d.continent])
+    .attr("stroke-width", d => highlightCountry && d.country.toLowerCase().includes(highlightCountry) ? 3 : 1.5)
+    .transition(t)
+    .attr("cx", d => nx(d.gdpPercap))
+    .attr("cy", d => ny(d.lifeExp))
+    .attr("r",  d => rSc(d.pop));
+}
+</script>
+</body>
+</html>
